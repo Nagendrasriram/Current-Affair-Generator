@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Current Affairs Question Generator</title>
+    <!-- Use Inter font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Load Tailwind CSS from CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loading-dot {
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white flex items-center justify-center min-h-screen p-4">
+    <div class="bg-gray-800 p-8 md:p-12 rounded-2xl shadow-2xl max-w-2xl w-full text-center border border-gray-700">
+        <h1 class="text-3xl md:text-4xl font-bold mb-6 text-slate-100">Current Affairs Question</h1>
+        
+        <div id="question-container" class="min-h-[100px] flex items-center justify-center p-4 bg-gray-700 rounded-xl mb-8 transition-all duration-300">
+            <p id="question-text" class="text-xl md:text-2xl text-gray-200">Click the button to get a question!</p>
+            <div id="loading-indicator" class="hidden flex space-x-2">
+                <div class="loading-dot w-3 h-3 bg-indigo-500 rounded-full"></div>
+                <div class="loading-dot w-3 h-3 bg-indigo-500 rounded-full"></div>
+                <div class="loading-dot w-3 h-3 bg-indigo-500 rounded-full"></div>
+            </div>
+        </div>
+
+        <div id="answer-container" class="hidden p-4 bg-gray-700 rounded-xl mb-4 text-left">
+            <h2 class="text-xl font-bold mb-2">Answer:</h2>
+            <p id="answer-text" class="text-gray-200"></p>
+            <h2 class="text-xl font-bold mt-4 mb-2">Explanation:</h2>
+            <p id="explanation-text" class="text-gray-200"></p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-4">
+            <button id="new-question-btn" class="w-full sm:w-auto bg-indigo-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-indigo-700 transition-colors duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                Generate New Question
+            </button>
+            <button id="show-answer-btn" class="w-full sm:w-auto bg-green-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-green-700 transition-colors duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                ✨ Show Answer
+            </button>
+        </div>
+
+        <button id="explain-topic-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:bg-blue-700 transition-colors duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+            ✨ Explain Topic
+        </button>
+        
+    </div>
+
+    <script>
+        // The API key is automatically provided by the Canvas environment
+        const apiKey = "AIzaSyDdfF9orjrF27_ao8WSWqm5skDDGyfvklM";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+        // Get the DOM elements we need to interact with
+        const questionTextElement = document.getElementById('question-text');
+        const newQuestionBtn = document.getElementById('new-question-btn');
+        const showAnswerBtn = document.getElementById('show-answer-btn');
+        const explainTopicBtn = document.getElementById('explain-topic-btn');
+        const answerContainer = document.getElementById('answer-container');
+        const answerTextElement = document.getElementById('answer-text');
+        const explanationTextElement = document.getElementById('explanation-text');
+        const loadingIndicator = document.getElementById('loading-indicator');
+
+        // Function to show/hide the loading indicator for the question
+        function toggleLoadingQuestion(isLoading) {
+            if (isLoading) {
+                questionTextElement.classList.add('hidden');
+                loadingIndicator.classList.remove('hidden');
+                newQuestionBtn.disabled = true;
+                newQuestionBtn.textContent = "Generating...";
+                showAnswerBtn.disabled = true;
+                explainTopicBtn.disabled = true;
+                answerContainer.classList.add('hidden');
+            } else {
+                questionTextElement.classList.remove('hidden');
+                loadingIndicator.classList.add('hidden');
+                newQuestionBtn.disabled = false;
+                newQuestionBtn.textContent = "Generate New Question";
+                showAnswerBtn.disabled = false;
+                explainTopicBtn.disabled = false;
+            }
+        }
+
+        // Function to show/hide loading for the answer/explanation
+        function toggleLoadingAnswer(isLoading) {
+            showAnswerBtn.disabled = isLoading;
+            showAnswerBtn.textContent = isLoading ? "Loading..." : "✨ Show Answer";
+        }
+
+        function toggleLoadingExplanation(isLoading) {
+            explainTopicBtn.disabled = isLoading;
+            explainTopicBtn.textContent = isLoading ? "Loading..." : "✨ Explain Topic";
+        }
+
+        // Function to fetch a new question from the Gemini API
+        async function fetchNewQuestion(retries = 3, delay = 1000) {
+            toggleLoadingQuestion(true);
+            answerTextElement.textContent = "";
+            explanationTextElement.textContent = "";
+
+            // The prompt for the Gemini API
+            const prompt = `Generate a single, interesting, and challenging question about a recent, significant current affairs topic. The question should be suitable for a general audience. The response should be a clean string, containing only the question itself, without any introductory phrases like "Question:" or "Here is a question:".`;
+            
+            const chatHistory = [{
+                role: "user",
+                parts: [{ text: prompt }]
+            }];
+
+            const payload = {
+                contents: chatHistory,
+            };
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const question = result.candidates[0].content.parts[0].text.trim();
+                        questionTextElement.textContent = question;
+                        toggleLoadingQuestion(false);
+                        return;
+                    } else {
+                        throw new Error("Unexpected API response structure.");
+                    }
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error);
+                    if (i < retries - 1) {
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2;
+                    } else {
+                        questionTextElement.textContent = "Failed to load a question. Please try again.";
+                        toggleLoadingQuestion(false);
+                        console.error("All API retry attempts failed.");
+                    }
+                }
+            }
+        }
+
+        // Function to fetch the answer from the Gemini API
+        async function fetchAnswer(retries = 3, delay = 1000) {
+            toggleLoadingAnswer(true);
+            answerContainer.classList.remove('hidden');
+
+            const currentQuestion = questionTextElement.textContent;
+            if (currentQuestion.startsWith("Click") || currentQuestion.startsWith("Failed")) {
+                answerTextElement.textContent = "Please generate a question first.";
+                toggleLoadingAnswer(false);
+                return;
+            }
+
+            const prompt = `Provide a very short and concise answer to the following current affairs question: "${currentQuestion}"`;
+            
+            const chatHistory = [{
+                role: "user",
+                parts: [{ text: prompt }]
+            }];
+
+            const payload = {
+                contents: chatHistory,
+            };
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const answer = result.candidates[0].content.parts[0].text.trim();
+                        answerTextElement.textContent = answer;
+                        toggleLoadingAnswer(false);
+                        return;
+                    } else {
+                        throw new Error("Unexpected API response structure.");
+                    }
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error);
+                    if (i < retries - 1) {
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2;
+                    } else {
+                        answerTextElement.textContent = "Failed to fetch answer. Please try again.";
+                        toggleLoadingAnswer(false);
+                        console.error("All API retry attempts failed.");
+                    }
+                }
+            }
+        }
+
+        // Function to fetch the explanation from the Gemini API
+        async function fetchExplanation(retries = 3, delay = 1000) {
+            toggleLoadingExplanation(true);
+            answerContainer.classList.remove('hidden');
+            
+            const currentQuestion = questionTextElement.textContent;
+            if (currentQuestion.startsWith("Click") || currentQuestion.startsWith("Failed")) {
+                explanationTextElement.textContent = "Please generate a question first.";
+                toggleLoadingExplanation(false);
+                return;
+            }
+
+            const prompt = `Provide a detailed, but concise, paragraph-long explanation for the following current affairs topic, which is the subject of the question: "${currentQuestion}"`;
+            
+            const chatHistory = [{
+                role: "user",
+                parts: [{ text: prompt }]
+            }];
+
+            const payload = {
+                contents: chatHistory,
+            };
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const explanation = result.candidates[0].content.parts[0].text.trim();
+                        explanationTextElement.textContent = explanation;
+                        toggleLoadingExplanation(false);
+                        return;
+                    } else {
+                        throw new Error("Unexpected API response structure.");
+                    }
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error);
+                    if (i < retries - 1) {
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2;
+                    } else {
+                        explanationTextElement.textContent = "Failed to fetch explanation. Please try again.";
+                        toggleLoadingExplanation(false);
+                        console.error("All API retry attempts failed.");
+                    }
+                }
+            }
+        }
+
+        // Add the event listeners to the buttons
+        newQuestionBtn.addEventListener('click', fetchNewQuestion);
+        showAnswerBtn.addEventListener('click', fetchAnswer);
+        explainTopicBtn.addEventListener('click', fetchExplanation);
+
+        // Initial question load
+        fetchNewQuestion();
+    </script>
+</body>
+</html>
